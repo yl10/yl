@@ -95,7 +95,7 @@ package {{.PackageName}}
 
 var(
 	{{range .Structs}}
- // {{.StructName}}Columns {{lower .StructName}} columns name
+ // {{.StructName}}Columns {{lower .StructName}} columns name and table name.
 {{.StructName}}Columns=  _{{.StructName}}Column{
 	 {{range $key, $value := .Columns}} {{$key}} : "{{$value}}",
         {{end}}
@@ -137,7 +137,7 @@ func init() {
 }
 
 func runGenColumns(cmd *Command, args []string) {
-	fmt.Println("开始解析文件....")
+	fmt.Println("	开始解析文件....")
 	filepath.Walk(*colPath, func(filename string, f os.FileInfo, _ error) error {
 		if filepath.Ext(filename) == ".go" {
 			if strings.Contains(filename, "_column.go") || strings.HasSuffix(filename, "_test.go") {
@@ -151,7 +151,7 @@ func runGenColumns(cmd *Command, args []string) {
 }
 
 func handleFile(filename string) error {
-	fmt.Printf("解析%v", filename)
+
 	fset := token.NewFileSet()
 
 	f, err := parser.ParseFile(fset, filename, nil, parser.ParseComments)
@@ -209,7 +209,7 @@ func handleFile(filename string) error {
 				for _, s := range x.Specs {
 					vSpec := s.(*ast.TypeSpec)
 					if specStruct, ok := vSpec.Type.(*ast.StructType); ok {
-						fmt.Printf("%v\r\n", vSpec.Name.Name)
+
 						//不是大写
 						if !isASCIIUpper(rune(vSpec.Name.Name[0])) {
 							continue
@@ -219,7 +219,7 @@ func handleFile(filename string) error {
 						if !strings.Contains(doc, GenColumns) {
 							continue
 						}
-						fmt.Println("找到需要处理的sturct:", vSpec.Name.Name)
+
 						var tempData ColStruct
 						tempData.StructName = vSpec.Name.Name
 
@@ -229,7 +229,7 @@ func handleFile(filename string) error {
 								tempData.Columns[specField.Names[0].Name] = fieldname
 							}
 						}
-						fmt.Println("tempdata", tempData)
+
 						if len(tempData.Columns) > 0 {
 							tempData.Columns["TableName"] = getTableName(tempData.StructName, x.Doc)
 							colfile.Structs = append(colfile.Structs, tempData)
@@ -242,10 +242,13 @@ func handleFile(filename string) error {
 		return true
 	})
 	if *coldebug {
-		colfile.writeTo(os.Stdout)
+		err = colfile.writeTo(os.Stdout)
 	}
-	colfile.WriteToFile()
-	return nil
+	err = colfile.WriteToFile()
+	if err == nil {
+		colfile.writeSuccess()
+	}
+	return err
 }
 
 //getDefaultFiledName 根据字段名默认生成
@@ -317,6 +320,18 @@ func (d *ColFile) writeTo(w io.Writer) error {
 
 }
 
+func (d *ColFile) writeSuccess() error {
+
+	str := `
+	成功解析文件：{{.FileName}}
+	包括以下struct：
+		{{range .Structs}}{{.StructName}}
+		{{end}}
+	`
+
+	return template.Must(template.New("success").Parse(str)).Execute(os.Stdout, d)
+}
+
 // WriteToFile 将生成好的模块文件写到本地
 func (d *ColFile) WriteToFile() error {
 
@@ -329,7 +344,7 @@ func (d *ColFile) WriteToFile() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("d:", d)
+
 	defer file.Close()
 	var buf bytes.Buffer
 	err = d.writeTo(&buf)
@@ -343,6 +358,5 @@ func (d *ColFile) WriteToFile() error {
 	}
 	_, err = file.Write(formatted)
 
-	fmt.Println("err:", err)
 	return err
 }

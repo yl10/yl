@@ -2,7 +2,7 @@ package columns
 
 var (
 
-	// AColumns a columns name
+	// AColumns a columns name and table name.
 	AColumns = _AColumn{
 		AAA:       "a_a_a",
 		BBB:       "b_b_b",
@@ -10,7 +10,7 @@ var (
 		TableName: "tableA",
 	}
 
-	// DColumns d columns name
+	// DColumns d columns name and table name.
 	DColumns = _DColumn{
 		AAA:        "a_a_a",
 		C:          "c",
@@ -19,7 +19,7 @@ var (
 		TableName:  "d",
 	}
 
-	// EColumns e columns name
+	// EColumns e columns name and table name.
 	EColumns = _EColumn{
 		AAA:       "a_a_a",
 		TableName: "tableE",
