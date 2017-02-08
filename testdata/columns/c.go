@@ -1,16 +1,21 @@
 package columns
 
-//GenColumns s
+//@TableName tableA
 type A struct {
+	ID  int
 	AAA string
+	BBB int
 }
 
-//GenColumns s
+//@TableName
 type D struct {
-	AAA string
+	GUID       string
+	ParentGUID string
+	AAA        string
+	C          bool
 }
 
-//GenColumns s
+//@TableName tableE
 type E struct {
 	AAA string
 }

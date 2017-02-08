@@ -91,6 +91,8 @@ func GonicCasedName(name string) string {
 		}
 
 	}
-
+	if strings.HasPrefix(name, "_") {
+		name = strings.TrimLeft(name, "_")
+	}
 	return SnakeCasedName(name)
 }

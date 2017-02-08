@@ -22,47 +22,101 @@ const (
 	colMustTagMapper
 )
 const (
-	//GenColumns GenColumns
-	GenColumns = "GenColumns"
+	//GenColumns 固定的匹配字符串
+	GenColumns = "@tablename"
 )
 
 var (
 	colTagName = cmdGenColumns.Flag.String("tag", "xorm", "tagname")
 	colPath    = cmdGenColumns.Flag.String("path", ".", "指定路径")
-	colMapRole = cmdGenColumns.Flag.Int("m", 0, "名称映射模式，0:SnakeMapper ;1:SameMapper ;2:GonicMapper ;3:没有tag的字段忽略")
-
-	debug = cmdGenColumns.Flag.Bool("debug", false, "show generated data")
+	colMapRole = cmdGenColumns.Flag.Int("m", colGonicMapper, "名称映射模式，0:SnakeMapper ;1:SameMapper ;2:GonicMapper ;3:没有tag的字段忽略.默认：2")
+	colPrefix  = cmdGenColumns.Flag.String("prefix", "", "表名的前缀")
+	coldebug   = cmdGenColumns.Flag.Bool("debug", false, "show generated data")
 )
 
 var cmdGenColumns = &Command{
 
-	UsageLine: "gencol [-tag]",
-	Short:     "Generate ",
+	UsageLine: "gencolumns [-tag] [-path] [-m ] [-prefix] [-debug]",
+	Short:     "根据struct的tag定义，生成_columns.go文件，避免拼SQL的时候出错。",
 	Long: `
+		tag说明
+		-tag	定义字段时用的tag标记，默认是xorm。
+		-path	需要解析的目录，默认是当前目录。注意：目录会一直往下递归。
+		-m		名称映射模式。0:SnakeMapper ;1:SameMapper ;2:GonicMapper ;3:没有tag的字段忽略.默认：2
+		-prefix	生成表名的时候希望增加的前缀，如果注释中制定了表名，前缀不生效。
+		-debug	在终端显示生成的内容。
+		
+		功能说明：
+
+		在使用ORM或者直接拼SQL语句的时候，字段名都是直接写出来的，写错了或被修改了，编译的时候也不会报错，从而导致最终在数据库里执行的SQL语句有问题。
+		genclomns会自动创建_columns.go文件，生成和相应struct完全一样的字段。比如：
+
+		User.go文件
+		package main
+		//User @tablename user
+		type User struct{
+			ID int
+			Name string
+		}
+
+		执行 yl gencolumns 
+
+		自动创建 User_columns.go
+		package main
+
+		var(
+			UserColumns=_UserColumns{
+				ID:"id",
+				Name:"name",
+				TableName:"user",
+			}
+		)
+		type(
+			_UserColumns struct{
+				ID string
+				Name string
+			}
+		)
+
+		拼SQL的时候，直接使用UserColumns.Name 来替代 "name",UserColumns.TableName 来表示表名。
+
+		===========QA:==============
+		具备哪些条件的sturct定义才会生成?
+		1.需要加注释，注释中包含 @tablename，不区分大小写。
+		2.可导出的类型，即首字母要大写。
+
+		
 
     `,
 }
 
 var temp = `
 package {{.PackageName}}
+
+var(
+	{{range .Structs}}
+ // {{.StructName}}Columns {{lower .StructName}} columns name
+{{.StructName}}Columns=  _{{.StructName}}Column{
+	 {{range $key, $value := .Columns}} {{$key}} : "{{$value}}",
+        {{end}}
+}
+	{{end}}
+
+)
+
+
+
+
 {{range .Structs}}
 {{$structname:=.StructName}}
+
     type _{{$structname}}Column struct {
         {{range $key, $value := .Columns}} {{ $key }} string
         {{end}}
     }
-    // {{$structname}}Columns {{lower $structname}} columns name
-    var {{$structname}}Columns  _{{$structname}}Column
-
-
+   
 {{end}}
-    func init() {
-        {{range .Structs}}
-{{$structname:=.StructName}}
-   {{range $key, $value := .Columns}} {{ $structname}}Columns.{{$key}} = "{{$value}}"
-        {{end}}
-{{end}}
-}
+   
 `
 
 //ColFile 文件
@@ -111,6 +165,43 @@ func handleFile(filename string) error {
 		Structs:     make([]ColStruct, 0),
 	}
 
+	getTableName := func(structname string, cg *ast.CommentGroup) string {
+		//*colPrefix
+		//解析制定的名字
+		specName := ""
+		for _, v := range cg.List {
+			line := v.Text
+
+			if strings.Contains(strings.ToLower(line), GenColumns) {
+
+				i := strings.Index(line, "@")
+				line = line[i:]
+
+				s := strings.Fields(line)
+
+				for i, ok, l := 0, false, len(s); i < l && !ok; i++ {
+					if strings.ToLower(s[i]) == GenColumns && i != l-1 {
+						specName = s[i+1]
+						ok = true
+					}
+				}
+
+			}
+
+		}
+		if specName == "" {
+			switch *colMapRole {
+			case colSnakeMapper:
+				return *colPrefix + SnakeCasedName(structname)
+			case colGonicMapper:
+				return *colPrefix + GonicCasedName(structname)
+			default:
+				return *colPrefix + structname
+			}
+		}
+		return specName
+	}
+
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.GenDecl:
@@ -124,13 +215,14 @@ func handleFile(filename string) error {
 							continue
 						}
 
-						doc := x.Doc.Text()
+						doc := strings.ToLower(x.Doc.Text())
 						if !strings.Contains(doc, GenColumns) {
 							continue
 						}
 						fmt.Println("找到需要处理的sturct:", vSpec.Name.Name)
 						var tempData ColStruct
 						tempData.StructName = vSpec.Name.Name
+
 						tempData.Columns = make(map[string]string, 0)
 						for _, specField := range specStruct.Fields.List {
 							if fieldname := getFieldName(specField); fieldname != "" {
@@ -138,9 +230,10 @@ func handleFile(filename string) error {
 							}
 						}
 						fmt.Println("tempdata", tempData)
-						//if len(tempData.Columns) > 0 {
-						colfile.Structs = append(colfile.Structs, tempData)
-						//}
+						if len(tempData.Columns) > 0 {
+							tempData.Columns["TableName"] = getTableName(tempData.StructName, x.Doc)
+							colfile.Structs = append(colfile.Structs, tempData)
+						}
 
 					}
 				}
@@ -148,8 +241,7 @@ func handleFile(filename string) error {
 		}
 		return true
 	})
-	fmt.Println("colfile:", colfile)
-	if *debug {
+	if *coldebug {
 		colfile.writeTo(os.Stdout)
 	}
 	colfile.WriteToFile()
@@ -228,10 +320,9 @@ func (d *ColFile) writeTo(w io.Writer) error {
 // WriteToFile 将生成好的模块文件写到本地
 func (d *ColFile) WriteToFile() error {
 
-	fname := strings.Replace(d.FileName, ".go", "_colunms.go", -1)
+	fname := strings.Replace(d.FileName, ".go", "_columns.go", -1)
 	if len(d.Structs) == 0 {
 		return os.Remove(fname)
-
 	}
 
 	file, err := os.Create(fname)
