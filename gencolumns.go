@@ -138,7 +138,7 @@ func init() {
 
 func runGenColumns(cmd *Command, args []string) {
 	fmt.Println("	开始解析文件....")
-	filepath.Walk(*colPath, func(filename string, f os.FileInfo, _ error) error {
+	err := filepath.Walk(*colPath, func(filename string, f os.FileInfo, _ error) error {
 		if filepath.Ext(filename) == ".go" {
 			if strings.Contains(filename, "_column.go") || strings.HasSuffix(filename, "_test.go") {
 				return nil
@@ -148,10 +148,18 @@ func runGenColumns(cmd *Command, args []string) {
 		}
 		return nil
 	})
+	if err != nil {
+		fmt.Printf("异常:%v", err)
+	}
 }
 
 func handleFile(filename string) error {
-
+	fmt.Printf("开始解析文件：%s", filename)
+	defer func() {
+		if err := recover(); err != nil {
+			fmt.Printf("解析文件%s出现异常：%v", filename, err)
+		}
+	}()
 	fset := token.NewFileSet()
 
 	f, err := parser.ParseFile(fset, filename, nil, parser.ParseComments)
@@ -337,7 +345,11 @@ func (d *ColFile) WriteToFile() error {
 
 	fname := strings.Replace(d.FileName, ".go", "_columns.go", -1)
 	if len(d.Structs) == 0 {
-		return os.Remove(fname)
+		err := os.Remove(fname)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
 	}
 
 	file, err := os.Create(fname)
