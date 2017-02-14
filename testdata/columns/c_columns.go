@@ -16,7 +16,7 @@ var (
 		C:          "c",
 		GUID:       "guid",
 		ParentGUID: "parent_guid",
-		TableName:  "d",
+		TableName:  "@tablenamecn",
 	}
 
 	// EColumns e columns name and table name.

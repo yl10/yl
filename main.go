@@ -20,6 +20,8 @@ import (
 	"text/template"
 	"unicode"
 	"unicode/utf8"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 // A Command is an implementation of a go command
@@ -74,7 +76,8 @@ func (c *Command) Runnable() bool {
 // The order here is the order in which they are printed by 'go help'.
 var commands = []*Command{
 	cmdVersion,
-	cmdRouter,
+	//cmdRouter,
+	cmdGenDict,
 	cmdGenColumns,
 }
 
@@ -115,6 +118,8 @@ func main() {
 				cmd.Flag.Parse(args[1:])
 				args = cmd.Flag.Args()
 			}
+			fmt.Printf("canshu:%v", args)
+			fmt.Printf("file:%v", *flagFilePath)
 			cmd.Run(cmd, args)
 			exit()
 			return
